@@ -9,6 +9,7 @@ import { downloadCommand } from './commands/download';
 import { rmCommand } from './commands/rm';
 import { mkdirCommand } from './commands/mkdir';
 import { mvCommand } from './commands/mv';
+import { syncCommand } from './commands/sync';
 
 async function main() {
     const program = new Command();
@@ -25,6 +26,7 @@ async function main() {
     program.addCommand(rmCommand);
     program.addCommand(mkdirCommand);
     program.addCommand(mvCommand);
+    program.addCommand(syncCommand);
     program.addCommand(versionCommand);
 
     await program.parseAsync(process.argv);

@@ -21,6 +21,7 @@ import { authenticate } from './auth/protonAuth';
 import { saveSession } from './config/config';
 import { createClient } from './sdk/client';
 import { uploadFile } from './sdk/upload';
+import { syncCommand } from './commands/sync';
 
 jest.setTimeout(120_000);
 
@@ -264,5 +265,128 @@ function log(msg: string) {
         expect(ok).toBe(true);
         const idx = toTrash.indexOf(subFolderUid);
         if (idx !== -1) toTrash.splice(idx, 1);
+    });
+
+    describe('sync command', () => {
+        let syncLocalDir: string;
+        let syncFolderUid: string;
+
+        beforeAll(async () => {
+            syncLocalDir = path.join(tmpDir, 'sync-local');
+            fs.mkdirSync(syncLocalDir);
+
+            const result = await client.createFolder(testFolderUid, 'sync-test');
+            if (!result.ok) throw new Error('Could not create sync-test folder');
+            syncFolderUid = result.value.uid;
+            toTrash.push(syncFolderUid);
+            log(`Sync test folder → uid: ${syncFolderUid}`);
+        });
+
+        beforeEach(() => {
+            // Commander retains option values across parseAsync calls
+            const opts = (syncCommand as any)._optionValues;
+            delete opts.delete;
+            delete opts.dryRun;
+            delete opts.verbose;
+        });
+
+        it('uploads new local files to an empty remote folder', async () => {
+            fs.writeFileSync(path.join(syncLocalDir, 'a.txt'), 'hello');
+            fs.writeFileSync(path.join(syncLocalDir, 'b.txt'), 'world');
+
+            await syncCommand.parseAsync([
+                'node', 'test', syncLocalDir, syncFolderUid, '--config', sessionFile,
+            ]);
+
+            const names = new Set<string>();
+            for await (const node of client.iterateFolderChildren(syncFolderUid)) {
+                if (node.ok) names.add(node.value.name);
+            }
+            log(`  Remote contents: ${[...names].join(', ')}`);
+            expect(names.has('a.txt')).toBe(true);
+            expect(names.has('b.txt')).toBe(true);
+        });
+
+        it('skips unchanged files on a second sync', async () => {
+            // No local changes — re-running should succeed without error
+            await expect(
+                syncCommand.parseAsync([
+                    'node', 'test', syncLocalDir, syncFolderUid, '--config', sessionFile,
+                ]),
+            ).resolves.not.toThrow();
+        });
+
+        it('replaces a file when its size changes', async () => {
+            const newContent = 'world with more content appended';
+            fs.writeFileSync(path.join(syncLocalDir, 'b.txt'), newContent);
+
+            await syncCommand.parseAsync([
+                'node', 'test', syncLocalDir, syncFolderUid, '--config', sessionFile,
+            ]);
+
+            // Use a fresh client — the shared client's SDK cache is stale after
+            // the sync (which ran with a separate client instance).
+            const freshClient = await createClient(sessionFile);
+            let bUid: string | undefined;
+            for await (const node of freshClient.iterateFolderChildren(syncFolderUid)) {
+                if (node.ok && node.value.name === 'b.txt') bUid = node.value.uid;
+            }
+            expect(bUid).toBeTruthy();
+            log(`  b.txt uid after update: ${bUid}`);
+
+            // Download and verify content — more reliable than checking claimedSize,
+            // which reflects the declared expectedSize and may not survive encryption.
+            const destFile = path.join(tmpDir, 'b-verify.txt');
+            const downloader = await freshClient.getFileDownloader(bUid!);
+            const fileStream = fs.createWriteStream(destFile);
+            const controller = downloader.downloadToStream(
+                Writable.toWeb(fileStream) as WritableStream<Uint8Array>,
+            );
+            await controller.completion();
+            const downloaded = fs.readFileSync(destFile, 'utf-8');
+            log(`  b.txt downloaded content: ${JSON.stringify(downloaded)}`);
+            expect(downloaded).toBe(newContent);
+        });
+
+        it('creates remote subdirectories and syncs their contents', async () => {
+            const subDir = path.join(syncLocalDir, 'images');
+            fs.mkdirSync(subDir, { recursive: true });
+            fs.writeFileSync(path.join(subDir, 'photo.jpg'), 'fake image data');
+
+            await syncCommand.parseAsync([
+                'node', 'test', syncLocalDir, syncFolderUid, '--config', sessionFile,
+            ]);
+
+            const freshClient = await createClient(sessionFile);
+            let imagesFolderUid: string | undefined;
+            for await (const node of freshClient.iterateFolderChildren(syncFolderUid)) {
+                if (node.ok && node.value.name === 'images') imagesFolderUid = node.value.uid;
+            }
+            expect(imagesFolderUid).toBeTruthy();
+            log(`  images/ folder uid: ${imagesFolderUid}`);
+
+            let found = false;
+            for await (const node of freshClient.iterateFolderChildren(imagesFolderUid!)) {
+                if (node.ok && node.value.name === 'photo.jpg') found = true;
+            }
+            expect(found).toBe(true);
+        });
+
+        it('trashes remote-only files when --delete is set', async () => {
+            fs.unlinkSync(path.join(syncLocalDir, 'a.txt'));
+
+            await syncCommand.parseAsync([
+                'node', 'test', syncLocalDir, syncFolderUid, '--config', sessionFile, '--delete',
+            ]);
+
+            const freshClient = await createClient(sessionFile);
+            const names = new Set<string>();
+            for await (const node of freshClient.iterateFolderChildren(syncFolderUid)) {
+                if (node.ok) names.add(node.value.name);
+            }
+            log(`  Remote contents after --delete: ${[...names].join(', ')}`);
+            expect(names.has('a.txt')).toBe(false);
+            expect(names.has('b.txt')).toBe(true);
+        });
     });
 });

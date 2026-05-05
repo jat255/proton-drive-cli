@@ -5,12 +5,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm run build    # Compile TypeScript to dist/
-npm run dev      # Run via ts-node (no build step)
-npm run start    # Run compiled CLI from dist/index.js
+npm run build       # Compile TypeScript to dist/
+npm run dev         # Run via ts-node (no build step)
+npm run start       # Run compiled CLI from dist/index.js
+npm test            # Run unit tests (excludes e2e and dist/)
+npm run test:watch  # Watch mode
+npm run test:e2e    # Integration tests against real Proton Drive (requires PROTON_TEST_EMAIL / PROTON_TEST_PASSWORD)
 ```
 
-No test suite or linter is configured yet.
+Single test file: `npx jest --testPathPatterns=src/commands/sync`
+
+### Test suite
+
+Jest + ts-jest. Tests live colocated with source as `*.test.ts`. The jest config has no `roots` exclusion, so **do not run `npm test` immediately after `npm run build`** — compiled `*.test.js` files in `dist/` will be picked up and fail (they hit the real API without mocks). Use `npx jest --testPathIgnorePatterns=e2e --testPathIgnorePatterns=dist` or run individual files instead.
+
+**Unit test conventions** (see `src/commands/rm.test.ts` as the canonical example):
+- Mock `../sdk/client` and `../config/config` at the top of every command test file.
+- Build a `makeMockClient(overrides)` factory returning a plain object with jest mock functions.
+- Use `async function* gen<T>(...items)` to stub async generators returned by `trashNodes`, `iterateFolderChildren`, etc.
+- Invoke the command via `command.parseAsync(['node', 'test', ...args])`.
+- Mock `process.exit` to throw `Object.assign(new Error('EXIT:N'), { isExit: true })` so tests can assert on it.
+- Commander retains option values across `parseAsync` calls on the same instance. In `beforeEach`, delete any boolean flags from `(command as any)._optionValues` to prevent state leakage between tests.
 
 ## Architecture
 
@@ -19,7 +34,7 @@ The stack is layered: CLI commands -> SDK client factory -> Drive SDK -> HTTP/cr
 ```
 src/
 ├── index.ts              # Commander.js entry, registers all subcommands
-├── commands/             # One file per command: login, upload, download, list, version
+├── commands/             # One file per command: login, upload, download, list, sync, mkdir, mv, rm, version
 ├── auth/protonAuth.ts    # SRP-6a auth flow; calls Proton API directly (no SDK)
 ├── sdk/
 │   ├── client.ts         # createClient() — loads session, wires up all dependencies

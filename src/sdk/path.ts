@@ -35,6 +35,46 @@ export async function resolveFolderPath(client: ProtonDriveClient, folderPath: s
     return currentUid;
 }
 
+export async function resolveOrCreateFolderPath(client: ProtonDriveClient, folderPath: string): Promise<string> {
+    const rootFolder = await client.getMyFilesRootFolder();
+    if (!rootFolder.ok) {
+        throw new Error('Could not get root folder');
+    }
+
+    const segments = folderPath.replace(/^\//, '').split('/').filter(Boolean);
+    if (segments.length === 0) {
+        return rootFolder.value.uid;
+    }
+
+    let currentUid = rootFolder.value.uid;
+
+    for (const segment of segments) {
+        let found: string | undefined;
+
+        for await (const node of client.iterateFolderChildren(currentUid)) {
+            if (!node.ok) continue;
+            const n = node.value;
+            if (n.type === NodeType.Folder && n.name === segment) {
+                found = n.uid;
+                break;
+            }
+        }
+
+        if (!found) {
+            const result = await client.createFolder(currentUid, segment);
+            if (!result.ok) {
+                throw new Error(`Failed to create folder "${segment}" in path "${folderPath}"`);
+            }
+            console.log(`Created remote folder: ${segment}`);
+            found = result.value.uid;
+        }
+
+        currentUid = found;
+    }
+
+    return currentUid;
+}
+
 export async function resolveNodePath(client: ProtonDriveClient, nodePath: string): Promise<string> {
     const rootFolder = await client.getMyFilesRootFolder();
     if (!rootFolder.ok) {
