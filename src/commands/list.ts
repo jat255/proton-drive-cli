@@ -3,6 +3,7 @@ import { NodeType } from '@protontech/drive-sdk';
 import { createClient } from '../sdk/client';
 import { resolveFolderPath, looksLikePath } from '../sdk/path';
 import { defaultConfigPath } from '../config/config';
+import { formatBytes } from '../utils/format';
 
 export const listCommand = new Command('list')
     .description('List files in a Proton Drive folder')
@@ -56,11 +57,3 @@ export const listCommand = new Command('list')
             process.exit(1);
         }
     });
-
-function formatBytes(bytes: number): string {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
-}

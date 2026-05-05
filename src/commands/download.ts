@@ -3,17 +3,23 @@ import fs from 'fs';
 import path from 'path';
 import { Writable } from 'stream';
 import { createClient } from '../sdk/client';
+import { formatBytes } from '../utils/format';
+import { looksLikePath, resolveNodePath } from '../sdk/path';
 import { defaultConfigPath } from '../config/config';
 
 export const downloadCommand = new Command('download')
     .description('Download a file from Proton Drive')
-    .argument('<node-uid>', 'Node UID of the file to download')
+    .argument('<uid-or-path>', 'Node UID or path (e.g. "Photos/2024/photo.jpg")')
     .argument('[destination]', 'Local destination path (defaults to current directory)')
     .option('-c, --config <path>', 'Path to config file', defaultConfigPath())
     .option('-v, --verbose', 'Enable verbose logging')
-    .action(async (nodeUid: string, destination: string | undefined, options) => {
+    .action(async (uidOrPath: string, destination: string | undefined, options) => {
         try {
             const client = await createClient(options.config, options.verbose);
+
+            const nodeUid = looksLikePath(uidOrPath)
+                ? await resolveNodePath(client, uidOrPath)
+                : uidOrPath;
 
             const node = await client.getNode(nodeUid);
             if (!node.ok) {
@@ -65,11 +71,3 @@ export const downloadCommand = new Command('download')
             process.exit(1);
         }
     });
-
-function formatBytes(bytes: number): string {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
-}

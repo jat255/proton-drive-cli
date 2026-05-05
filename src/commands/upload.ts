@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { createClient } from '../sdk/client';
 import { uploadFile } from '../sdk/upload';
+import { formatBytes } from '../utils/format';
 import { resolveFolderPath, looksLikePath } from '../sdk/path';
 import { defaultConfigPath } from '../config/config';
 
@@ -52,11 +53,3 @@ export const uploadCommand = new Command('upload')
             process.exit(1);
         }
     });
-
-function formatBytes(bytes: number): string {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
-}
