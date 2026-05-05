@@ -1,0 +1,40 @@
+{
+  "name": "proton-drive-cli",
+  "version": "1.0.0",
+  "description": "CLI tool to upload files to Proton Drive",
+  "main": "dist/index.js",
+  "bin": {
+    "proton-drive": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "proton",
+    "drive",
+    "cli",
+    "upload"
+  ],
+  "author": "Josh",
+  "license": "MIT",
+  "dependencies": {
+    "@noble/hashes": "^1.4.0",
+    "@protontech/drive-sdk": "file:../sdk/js/sdk",
+    "@types/node-fetch": "^2.6.13",
+    "bcryptjs": "^2.4.3",
+    "commander": "^12.0.0",
+    "inquirer": "^9.2.12",
+    "node-fetch": "^3.3.2",
+    "openpgp": "^6.3.0"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/inquirer": "^9.0.7",
+    "@types/node": "^20.10.6",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}
