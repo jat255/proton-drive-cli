@@ -62,6 +62,7 @@ interface KeySaltsResponse {
 }
 
 import type { StoredSession } from '../config/config';
+import { loadSession, saveSession } from '../config/config';
 export type AuthSession = StoredSession;
 
 const cookieJar: Record<string, string> = {};
@@ -147,6 +148,49 @@ async function apiRequest<T>(
     }
 
     return data as T;
+}
+
+export async function refreshSession(configPath: string): Promise<StoredSession> {
+    const session = loadSession(configPath);
+    if (!session) throw new Error('No session found. Run auth-proton first.');
+
+    const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'x-pm-appversion': APP_VERSION,
+        'x-pm-uid': session.uid,
+    };
+
+    const response = await fetch(`${BASE_URL}/auth/v4/refresh`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+            ResponseType: 'token',
+            GrantType: 'refresh_token',
+            RefreshToken: session.refreshToken,
+            RedirectURI: 'https://protonmail.com',
+        }),
+    });
+
+    let data: Record<string, unknown>;
+    try {
+        data = (await response.json()) as Record<string, unknown>;
+    } catch {
+        throw new Error(`Token refresh failed: HTTP ${response.status} (non-JSON response)`);
+    }
+
+    if (!response.ok || (data['Code'] as number | undefined) !== 1000) {
+        throw new Error(`Token refresh failed: ${(data['Error'] as string | undefined) ?? `HTTP ${response.status}`}`);
+    }
+
+    const updated: StoredSession = {
+        ...session,
+        accessToken: data['AccessToken'] as string,
+        refreshToken: data['RefreshToken'] as string,
+    };
+
+    saveSession(updated, configPath);
+    return updated;
 }
 
 export async function authenticate(username: string, password: string): Promise<AuthSession> {

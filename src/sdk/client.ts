@@ -5,13 +5,22 @@ import { createOpenPGPCrypto } from '../crypto/openpgpImpl';
 import { NodeSRPModule } from '../crypto/srpImpl';
 import { SimpleProtonDriveAccount } from '../account/simpleAccount';
 import { loadSession, defaultConfigPath } from '../config/config';
+import { refreshSession } from '../auth/protonAuth';
 import * as openpgp from 'openpgp';
 import type { PrivateKey } from '../types/interface';
 
 export async function createClient(configPath?: string, verbose = false): Promise<ProtonDriveClient> {
-    const session = loadSession(configPath ?? defaultConfigPath());
+    const resolvedPath = configPath ?? defaultConfigPath();
+
+    let session = loadSession(resolvedPath);
     if (!session) {
         throw new Error('Not logged in. Run `proton-drive login` first.');
+    }
+
+    try {
+        session = await refreshSession(resolvedPath);
+    } catch (err) {
+        process.stderr.write(`Warning: token refresh failed (${(err as Error).message}), using stored session\n`);
     }
 
     const { accessToken, uid, addresses: storedAddresses, keyPassword } = session;
